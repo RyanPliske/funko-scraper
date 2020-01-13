@@ -1,26 +1,37 @@
 const cheerio = require('cheerio');
 const puppeteer = require('puppeteer');
 
-async function getData() {
-    const browser = await puppeteer.launch({headless: false});
+const basePath = 'https://www.funko.com';
+async function getAllProducts() {
+    const browser = await puppeteer.launch();
     const page = await browser.newPage();
 
-    await page.goto('https://www.funko.com/products?productBrands=pop!');
+    await page.goto(basePath + '/products?productBrands=pop!');
+    const html = await page.$eval('.products-container', e => e.outerHTML);
 
-    return await page.$eval('.main-content', e => e.outerHTML);
+    return {page, html};
 }
 
-getData().then(
-    res => {
-        const $ = cheerio.load(res, {normalizeWhitespace: true});
-        const products = $('div.catalog-product');
-        const mappedProducts = products.map((index, element) => {
-            const name = element.find('product-card__name').text();
-            const price = element.find('product-card__price').text();
-            return {name, price};
-        });
-        console.log(mappedProducts);
+async function getProduct(page, productLink) {
+    await page.goto(basePath + productLink);
 
+    const html = await page.$eval('#siteContainer', e => e.outerHTML);
+    const $ = cheerio.load(html, {normalizeWhitespace: true});
+
+    return $('div.product-price.span').text();
+}
+
+getAllProducts().then(
+    async ({page, html}) => {
+        const $ = cheerio.load(html, {normalizeWhitespace: true});
+        const products = $('div.catalog-product');
+
+        const mappedProductLinks = products.map((index, element) => $(element).find('a')[0].attribs['href']).get();
+
+        for (const link of mappedProductLinks) {
+            const price = await getProduct(page, link);
+            console.log('Price is: ', price);
+        }
         process.exit(0);
     },
     err => {
